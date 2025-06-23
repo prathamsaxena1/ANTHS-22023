@@ -1,78 +1,90 @@
+// app.js
 const express = require('express');
-const dotenv = require('dotenv');
+const path = require('path');
 const morgan = require('morgan');
-const colors = require('colors');
 const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const rateLimit = require('express-rate-limit');
 const hpp = require('hpp');
-const cors = require('cors');
-const mongoSanitize = require('express-mongo-sanitize');
-const cookieParser = require('cookie-parser');
 const compression = require('compression');
+const cookieParser = require('cookie-parser');
+const config = require('./config/config');
+const corsMiddleware = require('./middleware/cors');
+const { jsonParser, urlencodedParser } = require('./middleware/bodyParser');
 const errorHandler = require('./middleware/errorHandler');
 
-// Load env variables
-dotenv.config({ path: './config/config.env' });
-
-// Initialize Express app
+// Initialize express app
 const app = express();
 
-// Body parser
-app.use(express.json());
+// Apply security-related middleware early
+app.use(helmet());
+
+// Apply CORS middleware
+app.use(corsMiddleware);
+
+// Body parser middleware
+app.use(jsonParser);
+app.use(urlencodedParser);
 
 // Cookie parser
 app.use(cookieParser());
 
-// Dev logging middleware
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
-
-// Set security headers
-app.use(helmet());
+// Sanitize data
+app.use(mongoSanitize());
 
 // Prevent XSS attacks
 app.use(xss());
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.max,
+  message: 'Too many requests from this IP, please try again later'
 });
-app.use(limiter);
+app.use('/api', limiter); // Apply rate limiting to API routes
 
-// Prevent http param pollution
+// Prevent HTTP param pollution
 app.use(hpp());
-
-// Enable CORS
-app.use(cors());
-
-// Sanitize data
-app.use(mongoSanitize());
 
 // Compress responses
 app.use(compression());
 
-// Set static folder
-app.use(express.static('public'));
+// Dev logging middleware
+if (config.env === 'development') {
+  app.use(morgan('dev'));
+}
 
-// Define Routes
+// Set static folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Mount routers
+app.use(`${config.apiUrl}/auth`, require('./routes/auth'));
+app.use(`${config.apiUrl}/restaurants`, require('./routes/restaurants'));
+app.use(`${config.apiUrl}/menu`, require('./routes/menu'));
+app.use(`${config.apiUrl}/orders`, require('./routes/orders'));
+app.use(`${config.apiUrl}/reviews`, require('./routes/reviews'));
+app.use('/api/health', require('./routes/health'));
+
+// Home route
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     success: true,
-    message: 'Restaurant Ordering API is running'
+    message: 'Restaurant Ordering API is running',
+    environment: config.env,
+    apiVersion: '1.0.0'
   });
 });
 
-// Future route mounting will go here
-// app.use('/api/v1/auth', require('./routes/auth'));
-// app.use('/api/v1/menu', require('./routes/menu'));
-// app.use('/api/v1/orders', require('./routes/orders'));
-// app.use('/api/v1/restaurants', require('./routes/restaurants'));
-// app.use('/api/v1/reviews', require('./routes/reviews'));
+// Handle 404 routes
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route not found'
+  });
+});
 
-// Error handler middleware (should be last)
+// Error handling middleware (should be last)
 app.use(errorHandler);
 
 module.exports = app;
