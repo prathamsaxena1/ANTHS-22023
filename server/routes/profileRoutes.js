@@ -1,10 +1,6 @@
 // routes/profileRoutes.js
 const express = require('express');
-const {
-  getUserProfile,
-  updateProfile
-} = require('../controllers/profileController');
-
+const { getMe, updateDetails } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -13,7 +9,7 @@ const router = express.Router();
 router.use(protect);
 
 router.route('/')
-  .get(getUserProfile)
-  .put(updateProfile);
+  .get(getMe)          // Using getMe from authController instead
+  .put(updateDetails); // Using updateDetails from authController instead
 
 module.exports = router;
