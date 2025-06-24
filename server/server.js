@@ -7,7 +7,6 @@ import logger from './utils/logger.js';
 const startServer = async () => {
   try {
     const conn = await connectDB();
-    logger.info(`MongoDB Connected`);
 
     // Define port
     const PORT = process.env.PORT || 8001;
