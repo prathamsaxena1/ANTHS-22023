@@ -1,53 +1,17 @@
-const mongoose = require('mongoose');
-const colors = require('colors'); // Optional: for colored console output
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+import { DB_NAME } from "../constants.js";
+import logger from "../utils/logger.js";
 
-/**
- * Connect to MongoDB database
- * @returns {Promise<void>}
- */
+dotenv.config()
+
 const connectDB = async () => {
-  try {
-    // Build connection string based on environment variables
-    let connectionString = process.env.MONGO_URI;
-    
-    // Replace username and password if they exist separately
-    if (process.env.MONGO_USER && process.env.MONGO_PASSWORD && connectionString.includes('<username>')) {
-      connectionString = connectionString
-        .replace('<username>', process.env.MONGO_USER)
-        .replace('<password>', process.env.MONGO_PASSWORD);
+    try{
+        await mongoose.connect(`${process.env.MONGO_URI}/${DB_NAME}`)
+        logger.info("You are connected to the database !")
+    }catch{
+        console.log("DB connection error !!")
     }
+}
 
-    // MongoDB connection options
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      // Mongoose 6+ no longer supports these options
-      // useCreateIndex: true, 
-      // useFindAndModify: false
-    };
-
-    // Connect to the database
-    const conn = await mongoose.connect(connectionString, options);
-
-    // Log success message
-    console.log(
-      colors ? 
-      `MongoDB Connected: ${conn.connection.host}`.cyan.underline.bold :
-      `MongoDB Connected: ${conn.connection.host}`
-    );
-    
-    return conn;
-  } catch (error) {
-    // Log error message
-    console.error(
-      colors ? 
-      `Error: ${error.message}`.red.bold :
-      `Error: ${error.message}`
-    );
-    
-    // Exit process with failure
-    process.exit(1);
-  }
-};
-
-module.exports = connectDB;
+export default connectDB
