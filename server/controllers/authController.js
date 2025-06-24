@@ -1,113 +1,90 @@
 // controllers/authController.js
 const User = require('../models/User');
+const ErrorResponse = require('../utils/errorResponse');
+const asyncHandler = require('../utils/asyncHandler');
 
-// Register a new user
-exports.registerUser = async (req, res) => {
-    try {
-        const { name, email, password } = req.body;
+// @desc    Login user
+// @route   POST /api/auth/login
+// @access  Public
+exports.login = asyncHandler(async (req, res, next) => {
+  const { email, password } = req.body;
 
-        // Create user
-        const user = await User.create({
-            name,
-            email,
-            password // This will be automatically hashed by our pre-save middleware
-        });
+  // Validate email and password
+  if (!email || !password) {
+    return next(new ErrorResponse('Please provide email and password', 400));
+  }
 
-        // Remove password from response
-        user.password = undefined;
+  // Check for user
+  const user = await User.findOne({ email }).select('+password');
 
-        res.status(201).json({
-            success: true,
-            data: user
-        });
-    } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: error.message
-        });
-    }
-};
+  if (!user) {
+    return next(new ErrorResponse('Invalid credentials', 401));
+  }
 
-// controllers/authController.js
-exports.loginUser = async (req, res) => {
-    try {
-        const { email, password } = req.body;
+  // Check if password matches
+  const isMatch = await user.matchPassword(password);
 
-        // Validate email & password
-        if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide email and password'
-            });
-        }
+  if (!isMatch) {
+    return next(new ErrorResponse('Invalid credentials', 401));
+  }
 
-        // Find user by email and include password field
-        const user = await User.findOne({ email }).select('+password');
+  // Generate token
+  sendTokenResponse(user, 200, res);
+});
 
-        // Check if user exists
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
+// @desc    Log user out / clear cookie
+// @route   GET /api/auth/logout
+// @access  Private
+exports.logout = asyncHandler(async (req, res, next) => {
+  res.cookie('token', 'none', {
+    expires: new Date(Date.now() + 10 * 1000), // Expires in 10 seconds
+    httpOnly: true
+  });
 
-        // Check if password matches
-        const isMatch = await user.matchPassword(password);
+  res.status(200).json({
+    success: true,
+    data: {}
+  });
+});
 
-        if (!isMatch) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
+// @desc    Get current logged in user
+// @route   GET /api/auth/me
+// @access  Private
+exports.getMe = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
 
-        // Password is correct, send response (you might generate a JWT here)
-        // Remove password from response
-        user.password = undefined;
+  res.status(200).json({
+    success: true,
+    data: user
+  });
+});
 
-        res.status(200).json({
-            success: true,
-            data: user
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-};
+// Helper function to get token from model, create cookie and send response
+const sendTokenResponse = (user, statusCode, res) => {
+  // Generate token
+  const token = user.generateAuthToken();
 
-// controllers/authController.js
-exports.updatePassword = async (req, res) => {
-    try {
-        const { currentPassword, newPassword } = req.body;
+  // Create cookie options
+  const cookieOptions = {
+    expires: new Date(Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000),
+    httpOnly: true // Cookie cannot be accessed by client-side JS
+  };
 
-        // Get user with password
-        const user = await User.findById(req.user.id).select('+password');
+  // Set secure flag in production (HTTPS only)
+  if (process.env.NODE_ENV === 'production') {
+    cookieOptions.secure = true;
+  }
 
-        // Check current password
-        const isMatch = await user.matchPassword(currentPassword);
+  // Remove password from output
+  user.password = undefined;
 
-        if (!isMatch) {
-            return res.status(401).json({
-                success: false,
-                message: 'Current password is incorrect'
-            });
-        }
-
-        // Update password
-        user.password = newPassword; // This will trigger our pre-save middleware
-        await user.save();
-
-        res.status(200).json({
-            success: true,
-            message: 'Password updated successfully'
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
+  // Send response with token in cookie and JSON
+  res
+    .status(statusCode)
+    .cookie('token', token, cookieOptions)
+    .json({
+      success: true,
+      token,
+      user
+    });
 };
