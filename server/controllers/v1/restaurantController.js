@@ -7,14 +7,14 @@ const asyncHandler = require('../../middleware/asyncHandler');
 // @desc    Get all restaurants
 // @route   GET /api/v1/restaurants
 // @access  Public
-exports.getRestaurants = asyncHandler(async (req, res, next) => {
+export const getRestaurants = asyncHandler(async (req, res, next) => {
   res.status(200).json(res.advancedResults);
 });
 
 // @desc    Get single restaurant
 // @route   GET /api/v1/restaurants/:id
 // @access  Public
-exports.getRestaurant = asyncHandler(async (req, res, next) => {
+export const getRestaurant = asyncHandler(async (req, res, next) => {
   const restaurant = await Restaurant.findById(req.params.id);
 
   if (!restaurant) {
@@ -32,7 +32,7 @@ exports.getRestaurant = asyncHandler(async (req, res, next) => {
 // @desc    Create new restaurant
 // @route   POST /api/v1/restaurants
 // @access  Private (Restaurant Owner, Admin)
-exports.createRestaurant = asyncHandler(async (req, res, next) => {
+export const createRestaurant = asyncHandler(async (req, res, next) => {
   // Add owner to req.body
   req.body.owner = req.user.id;
 
@@ -56,7 +56,7 @@ exports.createRestaurant = asyncHandler(async (req, res, next) => {
 // @desc    Update restaurant
 // @route   PUT /api/v1/restaurants/:restaurantId
 // @access  Private (Restaurant Owner, Admin)
-exports.updateRestaurant = asyncHandler(async (req, res, next) => {
+export const updateRestaurant = asyncHandler(async (req, res, next) => {
   let restaurant = await Restaurant.findById(req.params.restaurantId);
 
   if (!restaurant) {
@@ -86,7 +86,7 @@ exports.updateRestaurant = asyncHandler(async (req, res, next) => {
 // @desc    Delete restaurant
 // @route   DELETE /api/v1/restaurants/:restaurantId
 // @access  Private (Restaurant Owner, Admin)
-exports.deleteRestaurant = asyncHandler(async (req, res, next) => {
+export const deleteRestaurant = asyncHandler(async (req, res, next) => {
   const restaurant = await Restaurant.findById(req.params.restaurantId);
 
   if (!restaurant) {
@@ -117,7 +117,7 @@ exports.deleteRestaurant = asyncHandler(async (req, res, next) => {
 // @desc    Upload restaurant image
 // @route   POST /api/v1/restaurants/:restaurantId/upload
 // @access  Private (Restaurant Owner, Admin)
-exports.uploadRestaurantImage = asyncHandler(async (req, res, next) => {
+export const uploadRestaurantImage = asyncHandler(async (req, res, next) => {
   const restaurant = await Restaurant.findById(req.params.restaurantId);
 
   if (!restaurant) {
@@ -190,7 +190,7 @@ exports.uploadRestaurantImage = asyncHandler(async (req, res, next) => {
 // @desc    Get restaurant menu items
 // @route   GET /api/v1/restaurants/:id/menu
 // @access  Public
-exports.getRestaurantMenuItems = asyncHandler(async (req, res, next) => {
+export const getRestaurantMenuItems = asyncHandler(async (req, res, next) => {
   // Get menu items for a specific restaurant
   const menuItems = await MenuItem.find({ restaurant: req.params.id });
 

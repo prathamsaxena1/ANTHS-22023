@@ -13,6 +13,9 @@ app.use(cors());
 
 // Use user routes
 app.use("/api/v1/user", userRoutes);
+app.use('/api/v1/restaurants', restaurants);
+app.use('/api/v1/restaurants/:restaurantId/menu-items', menuItems);
+app.use('/api/v1/menu-items', menuItems);
 
 // Use JSON middleware for parsing application/json
 app.use(express.json());

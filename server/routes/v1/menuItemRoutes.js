@@ -1,15 +1,15 @@
 // routes/v1/menuItemRoutes.js
-const express = require('express');
-const { 
+import express from 'express';
+import { 
   getMenuItems,
   getMenuItem,
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
   uploadMenuItemImage
-} = require('../../controllers/v1/menuItemController');
+} from '../../controllers/v1/menuItemController.js';
 
-const { protect, authorize, checkRestaurantOwnership } = require('../../middleware/auth');
+import { protect, authorize, checkRestaurantOwnership } from '../../middleware/auth.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -47,4 +47,4 @@ router.post('/:itemId/upload',
   uploadMenuItemImage
 );
 
-module.exports = router;
+export default router;

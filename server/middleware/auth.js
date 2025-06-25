@@ -4,9 +4,9 @@ import asyncHandler from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/apiError.js";
 
 export const verifyJWT = asyncHandler(async (req, _, next) => {
-    console.log(req.headers); 
+    console.log(req.headers);
 
-    const token = req.headers.authorization?.split(' ')[1]; 
+    const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
         throw new ApiError(401, "Token not found");
     }
@@ -27,4 +27,25 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
             throw new ApiError(401, "Invalid token");
         }
     }
+});
+
+export const checkRestaurantOwnership = asyncHandler(async (req, res, next) => {
+    const restaurantId = req.params.restaurantId;
+
+    const restaurant = await Restaurant.findById(restaurantId);
+
+    if (!restaurant) {
+        return next(
+            new ErrorResponse(`Restaurant not found with id of ${restaurantId}`, 404)
+        );
+    }
+
+    // Check if user is restaurant owner or admin
+    if (restaurant.owner.toString() !== req.user.id && req.user.role !== 'admin') {
+        return next(
+            new ErrorResponse(`User ${req.user.id} is not authorized to manage this restaurant`, 403)
+        );
+    }
+
+    next();
 });
