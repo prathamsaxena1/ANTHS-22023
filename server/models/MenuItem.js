@@ -1,32 +1,25 @@
 // models/MenuItem.js
 import mongoose from 'mongoose';
+import slugify from 'slugify';
 
 const MenuItemSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Please add a menu item name'],
+    required: [true, 'Please provide a name for this menu item'],
     trim: true,
     maxlength: [100, 'Name cannot be more than 100 characters']
   },
+  slug: String,
   description: {
     type: String,
-    required: [true, 'Please add a description'],
+    required: [true, 'Please provide a description'],
+    trim: true,
     maxlength: [1000, 'Description cannot be more than 1000 characters']
   },
   price: {
     type: Number,
     required: [true, 'Please specify the price'],
     min: [0, 'Price cannot be negative']
-  },
-  discountedPrice: {
-    type: Number,
-    min: [0, 'Discounted price cannot be negative'],
-    validate: {
-      validator: function(val) {
-        return val < this.price;
-      },
-      message: 'Discounted price must be less than the regular price'
-    }
   },
   category: {
     type: String,
@@ -40,132 +33,114 @@ const MenuItemSchema = new mongoose.Schema({
       'breakfast', 
       'lunch', 
       'dinner', 
-      'specialty',
+      'special',
       'soup',
       'salad',
-      'kid\'s meal',
-      'combo'
+      'seafood',
+      'pasta',
+      'pizza',
+      'sandwich',
+      'sushi',
+      'vegetarian',
+      'vegan',
+      'grill',
+      'bakery',
+      'snack',
+      'kids'
     ]
-  },
-  subcategory: {
-    type: String
   },
   image: {
     url: {
       type: String,
-      required: [true, 'Please add an image URL']
+      default: 'https://res.cloudinary.com/restaurant-app/image/upload/v1623456789/default-food_jkl123.jpg'
     },
     alt: {
       type: String,
-      default: 'Menu item image'
+      default: function() {
+        return `${this.name} - Menu Item`;
+      }
     }
   },
-  dietaryInfo: {
-    vegetarian: {
-      type: Boolean,
-      default: false
-    },
-    vegan: {
-      type: Boolean,
-      default: false
-    },
-    glutenFree: {
-      type: Boolean,
-      default: false
-    },
-    dairyFree: {
-      type: Boolean,
-      default: false
-    },
-    nutFree: {
-      type: Boolean,
-      default: false
-    },
-    spicy: {
-      type: Boolean,
-      default: false
-    },
-    containsAlcohol: {
-      type: Boolean,
-      default: false
-    }
+  // Restaurant reference - links to Restaurant model
+  restaurant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Restaurant',
+    required: [true, 'Menu item must belong to a restaurant']
   },
-  nutritionalInfo: {
-    calories: Number,
-    protein: Number,
-    carbs: Number,
-    fat: Number,
-    sodium: Number
+  // Optional fields for enhanced functionality
+  isAvailable: {
+    type: Boolean,
+    default: true
+  },
+  isVegetarian: {
+    type: Boolean,
+    default: false
+  },
+  isVegan: {
+    type: Boolean,
+    default: false
+  },
+  isGlutenFree: {
+    type: Boolean,
+    default: false
+  },
+  isSpicy: {
+    type: Boolean,
+    default: false
   },
   allergens: {
     type: [String],
     enum: [
-      'milk', 'eggs', 'fish', 'shellfish', 'tree nuts', 
-      'peanuts', 'wheat', 'soybeans', 'sesame'
+      'peanuts', 
+      'tree nuts', 
+      'dairy', 
+      'eggs', 
+      'wheat', 
+      'soy', 
+      'fish', 
+      'shellfish', 
+      'sesame'
     ]
   },
-  // Customization options (like add extra cheese, remove onions, etc.)
-  customizationOptions: [{
+  calories: {
+    type: Number,
+    min: [0, 'Calories cannot be negative']
+  },
+  preparationTime: {
+    type: Number,
+    min: [0, 'Preparation time cannot be negative'],
+    description: 'Preparation time in minutes'
+  },
+  // Options for customization
+  options: [{
     name: {
       type: String,
       required: true
     },
-    choices: [{
-      name: {
-        type: String,
-        required: true
-      },
-      priceAdjustment: {
-        type: Number,
-        default: 0
-      }
-    }]
-  }],
-  // Availability fields
-  availability: {
-    isAvailable: {
-      type: Boolean,
-      default: true
-    },
-    availableDays: {
-      monday: { type: Boolean, default: true },
-      tuesday: { type: Boolean, default: true },
-      wednesday: { type: Boolean, default: true },
-      thursday: { type: Boolean, default: true },
-      friday: { type: Boolean, default: true },
-      saturday: { type: Boolean, default: true },
-      sunday: { type: Boolean, default: true }
-    },
-    limitedTimeOnly: {
-      isLimited: {
-        type: Boolean,
-        default: false
-      },
-      startDate: Date,
-      endDate: Date
+    additionalPrice: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: [0, 'Additional price cannot be negative']
     }
-  },
-  popularity: {
+  }],
+  // Popularity tracking
+  orderCount: {
     type: Number,
-    min: 0,
-    default: 0
+    default: 0,
+    min: [0, 'Order count cannot be negative']
   },
   featured: {
     type: Boolean,
     default: false
   },
-  // Restaurant reference - links each menu item to a specific restaurant
-  restaurant: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Restaurant',
-    required: true
-  },
-  // Order of item in the menu (for sorting)
-  displayOrder: {
+  discountPercentage: {
     type: Number,
+    min: [0, 'Discount cannot be negative'],
+    max: [100, 'Discount cannot exceed 100%'],
     default: 0
   },
-  // Timestamps
+  // Timestamps for auditing
   createdAt: {
     type: Date,
     default: Date.now
@@ -179,48 +154,47 @@ const MenuItemSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Update the updatedAt field on saves
+// Create virtual property for discounted price
+MenuItemSchema.virtual('discountedPrice').get(function() {
+  if (!this.discountPercentage) return this.price;
+  return this.price - (this.price * this.discountPercentage / 100);
+});
+
+// Create slug from the name
 MenuItemSchema.pre('save', function(next) {
+  // Update timestamp on save
   this.updatedAt = Date.now();
+  
+  // Create slug from name
+  if (this.name) {
+    this.slug = slugify(this.name, {
+      lower: true,
+      remove: /[*+~.()'"!:@]/g
+    });
+  }
   next();
 });
 
-// Check if item is currently available
-MenuItemSchema.methods.isAvailableNow = function() {
-  if (!this.availability.isAvailable) {
-    return false;
-  }
-  
-  // Check if it's a limited time item
-  if (this.availability.limitedTimeOnly.isLimited) {
-    const now = new Date();
-    const startDate = this.availability.limitedTimeOnly.startDate;
-    const endDate = this.availability.limitedTimeOnly.endDate;
-    
-    if (startDate && now < startDate) {
-      return false;
-    }
-    
-    if (endDate && now > endDate) {
-      return false;
-    }
-  }
-  
-  // Check if available on current day
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDay = days[new Date().getDay()];
-  
-  return this.availability.availableDays[currentDay];
-};
-
 // Add index for better search performance
 MenuItemSchema.index({ name: 'text', description: 'text' });
-MenuItemSchema.index({ category: 1, subcategory: 1 });
 MenuItemSchema.index({ restaurant: 1 });
-MenuItemSchema.index({ 'availability.isAvailable': 1 });
-MenuItemSchema.index({ featured: 1 });
+MenuItemSchema.index({ category: 1 });
 MenuItemSchema.index({ price: 1 });
-MenuItemSchema.index({ displayOrder: 1 });
+MenuItemSchema.index({ slug: 1 });
+MenuItemSchema.index({ featured: 1 });
+
+// Method to check if an item is discounted
+MenuItemSchema.methods.isDiscounted = function() {
+  return this.discountPercentage > 0;
+};
+
+// Middleware for automatically generating a default image alt text if not provided
+MenuItemSchema.pre('validate', function(next) {
+  if (this.image && !this.image.alt) {
+    this.image.alt = `${this.name} - Menu Item`;
+  }
+  next();
+});
 
 const MenuItem = mongoose.model('MenuItem', MenuItemSchema);
 
