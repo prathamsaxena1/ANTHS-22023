@@ -11,7 +11,9 @@ connectDB()
     app.listen(8001,()=>{
         logger.info("App is listening on port 8001")
     })
+    logger.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 })
+
 .catch((error)=>{
     logger.error("Mongo DB connection failed")
     logger.error(error)

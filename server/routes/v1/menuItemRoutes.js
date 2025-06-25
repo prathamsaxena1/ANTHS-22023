@@ -25,54 +25,6 @@ router.route('/')
     getMenuItems
   );
 
-// Routes for menu items inside a restaurant context
-// Apply restaurant ownership check to all protected routes
-router.use(protect);
-
-// Public routes (already protected by the router.use above)
-router.route('/')
-  .post(
-    authorize('restaurantOwner', 'admin'),
-    checkRestaurantOwnership,
-    createMenuItem
-  );
-
-// Batch create many menu items at once
-router.route('/batch')
-  .post(
-    authorize('restaurantOwner', 'admin'),
-    checkRestaurantOwnership,
-    batchCreateMenuItems
-  );
-
-// Routes for specific menu item
-router.route('/:id')
-  .get(getMenuItem)
-  .put(
-    authorize('restaurantOwner', 'admin'),
-    checkRestaurantOwnership,
-    updateMenuItem
-  )
-  .delete(
-    authorize('restaurantOwner', 'admin'),
-    checkRestaurantOwnership,
-    deleteMenuItem
-  );
-
-// Upload image for menu item
-router.route('/:id/upload-image')
-  .post(
-    authorize('restaurantOwner', 'admin'),
-    checkRestaurantOwnership,
-    uploadMenuItemImage
-  );
-
-// Toggle menu item availability
-router.route('/:id/toggle-availability')
-  .patch(
-    authorize('restaurantOwner', 'admin'),
-    checkRestaurantOwnership,
-    toggleMenuItemAvailability
-  );
+// Rest of your router code...
 
 export default router;
