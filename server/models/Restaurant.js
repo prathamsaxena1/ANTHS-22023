@@ -1,7 +1,5 @@
 // models/Restaurant.js
 const mongoose = require('mongoose');
-const slugify = require('slugify');
-const geocoder = require('../utils/geocoder');
 
 const RestaurantSchema = new mongoose.Schema({
   name: {
@@ -9,31 +7,12 @@ const RestaurantSchema = new mongoose.Schema({
     required: [true, 'Please add a restaurant name'],
     unique: true,
     trim: true,
-    maxlength: [50, 'Name cannot be more than 50 characters']
+    maxlength: [100, 'Name cannot be more than 100 characters']
   },
-  slug: String,
   description: {
     type: String,
     required: [true, 'Please add a description'],
-    maxlength: [1000, 'Description cannot be more than 1000 characters']
-  },
-  website: {
-    type: String,
-    match: [
-      /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/,
-      'Please use a valid URL with HTTP or HTTPS'
-    ]
-  },
-  phone: {
-    type: String,
-    maxlength: [20, 'Phone number cannot be longer than 20 characters']
-  },
-  email: {
-    type: String,
-    match: [
-      /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-      'Please add a valid email'
-    ]
+    maxlength: [2000, 'Description cannot be more than 2000 characters']
   },
   address: {
     type: String,
@@ -43,7 +22,8 @@ const RestaurantSchema = new mongoose.Schema({
     // GeoJSON Point
     type: {
       type: String,
-      enum: ['Point']
+      enum: ['Point'],
+      default: 'Point'
     },
     coordinates: {
       type: [Number],
@@ -58,57 +38,12 @@ const RestaurantSchema = new mongoose.Schema({
   },
   cuisine: {
     type: [String],
-    required: [true, 'Please add at least one cuisine type'],
-    enum: [
-      'italian',
-      'chinese',
-      'indian',
-      'japanese',
-      'mexican',
-      'thai',
-      'american',
-      'mediterranean',
-      'french',
-      'vietnamese',
-      'korean',
-      'spanish',
-      'middle-eastern',
-      'greek',
-      'vegan',
-      'vegetarian',
-      'seafood',
-      'steakhouse',
-      'pizza',
-      'fast-food',
-      'dessert',
-      'cafe',
-      'bakery',
-      'other'
-    ]
+    required: [true, 'Please specify at least one cuisine type']
   },
-  averageRating: {
-    type: Number,
-    min: [1, 'Rating must be at least 1'],
-    max: [5, 'Rating cannot be more than 5']
-  },
-  averageCost: {
-    type: Number
-  },
-  photo: {
+  priceRange: {
     type: String,
-    default: 'no-photo.jpg'
-  },
-  delivery: {
-    type: Boolean,
-    default: false
-  },
-  takeout: {
-    type: Boolean,
-    default: true
-  },
-  dineIn: {
-    type: Boolean,
-    default: true
+    enum: ['$', '$$', '$$$', '$$$$'],
+    required: [true, 'Please specify a price range']
   },
   openingHours: {
     monday: { open: String, close: String },
@@ -119,12 +54,123 @@ const RestaurantSchema = new mongoose.Schema({
     saturday: { open: String, close: String },
     sunday: { open: String, close: String }
   },
+  contactInfo: {
+    phone: {
+      type: String,
+      required: [true, 'Please provide a contact phone number']
+    },
+    email: {
+      type: String,
+      match: [
+        /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/,
+        'Please provide a valid email'
+      ]
+    },
+    website: String
+  },
+  // Images array - can store URLs or file paths
+  images: {
+    type: [{
+      url: {
+        type: String,
+        required: true
+      },
+      caption: {
+        type: String
+      },
+      isPrimary: {
+        type: Boolean,
+        default: false
+      }
+    }],
+    validate: [
+      {
+        validator: function(images) {
+          // Ensure at least one image is marked as primary if there are images
+          if (images.length > 0) {
+            return images.some(img => img.isPrimary === true);
+          }
+          return true; // When no images, validation passes
+        },
+        message: 'At least one image must be marked as primary'
+      },
+      {
+        validator: function(images) {
+          // Count primary images
+          const primaryCount = images.filter(img => img.isPrimary).length;
+          return primaryCount <= 1;
+        },
+        message: 'Only one image can be marked as primary'
+      }
+    ]
+  },
+  // Additional features
+  features: {
+    delivery: {
+      type: Boolean,
+      default: false
+    },
+    takeout: {
+      type: Boolean,
+      default: true
+    },
+    reservationRequired: {
+      type: Boolean,
+      default: false
+    },
+    outdoorSeating: {
+      type: Boolean,
+      default: false
+    },
+    vegetarianOptions: {
+      type: Boolean,
+      default: false
+    },
+    veganOptions: {
+      type: Boolean,
+      default: false
+    },
+    glutenFreeOptions: {
+      type: Boolean,
+      default: false
+    }
+  },
+  // Rating and reviews
+  rating: {
+    average: {
+      type: Number,
+      min: [0, 'Rating must be at least 0'],
+      max: [5, 'Rating must not be more than 5'],
+      default: 0
+    },
+    count: {
+      type: Number,
+      default: 0
+    }
+  },
+  // Availability status
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'pending', 'maintenance'],
+    default: 'inactive'
+  },
   // Owner reference - links to User model
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
+  // Administrative fields
+  featured: {
+    type: Boolean,
+    default: false
+  },
+  verificationStatus: {
+    type: String,
+    enum: ['unverified', 'pending', 'verified'],
+    default: 'unverified'
+  },
+  // Timestamps
   createdAt: {
     type: Date,
     default: Date.now
@@ -138,10 +184,12 @@ const RestaurantSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Create restaurant slug from the name
-RestaurantSchema.pre('save', function(next) {
-  this.slug = slugify(this.name, { lower: true });
-  next();
+// Add virtual property for menus
+RestaurantSchema.virtual('menuItems', {
+  ref: 'MenuItem',
+  localField: '_id',
+  foreignField: 'restaurant',
+  justOne: false
 });
 
 // Update the updatedAt field on saves
@@ -150,44 +198,9 @@ RestaurantSchema.pre('save', function(next) {
   next();
 });
 
-// Geocode & create location field
-RestaurantSchema.pre('save', async function(next) {
-  const loc = await geocoder.geocode(this.address);
-  this.location = {
-    type: 'Point',
-    coordinates: [loc[0].longitude, loc[0].latitude],
-    formattedAddress: loc[0].formattedAddress,
-    street: loc[0].streetName,
-    city: loc[0].city,
-    state: loc[0].stateCode,
-    zipcode: loc[0].zipcode,
-    country: loc[0].countryCode
-  };
-
-  // Do not save address in DB
-  this.address = undefined;
-  next();
-});
-
-// Cascade delete menu items when a restaurant is deleted
-RestaurantSchema.pre('remove', async function(next) {
-  await this.model('MenuItem').deleteMany({ restaurant: this._id });
-  next();
-});
-
-// Reverse populate with virtuals
-RestaurantSchema.virtual('menu', {
-  ref: 'MenuItem',
-  localField: '_id',
-  foreignField: 'restaurant',
-  justOne: false
-});
-
-RestaurantSchema.virtual('reviews', {
-  ref: 'Review',
-  localField: '_id',
-  foreignField: 'restaurant',
-  justOne: false
-});
+// Add index for better search performance
+RestaurantSchema.index({ name: 'text', description: 'text' });
+RestaurantSchema.index({ 'location.city': 1, 'location.country': 1 });
+RestaurantSchema.index({ cuisine: 1 });
 
 module.exports = mongoose.model('Restaurant', RestaurantSchema);

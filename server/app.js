@@ -2,6 +2,8 @@ import cors from "cors";
 import express from "express";
 import userRoutes from "./routes/userRoutes.js";
 import logger from "./utils/logger.js";
+import restaurants from './routes/v1/restaurantRoutes.js';
+import menuItems from './routes/v1/menuItemRoutes.js';
 
 // Initialize the Express app
 const app = express();
