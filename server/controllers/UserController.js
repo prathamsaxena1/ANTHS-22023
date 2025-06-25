@@ -65,193 +65,262 @@ const loginUser = asyncHandler(async (req, res) => {
          });
 });
 
+// controllers/profileController.js
+import User from '../models/User.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import AppError from '../utils/appError.js';
+import { uploadToCloudinary, removeFromCloudinary } from '../utils/fileUpload.js';
+
 /**
  * @desc    Get current user profile
- * @route   GET /api/v1/users/profile
+ * @route   GET /api/v1/profile
  * @access  Private
  */
-exports.getCurrentUserProfile = asyncHandler(async (req, res, next) => {
-    // User is already available in req object from the auth middleware
-    const user = await User.findById(req.user.id);
-  
-    if (!user) {
-      return next(new AppError('User not found', 404));
+const getProfile = asyncHandler(async (req, res, next) => {
+  // User is already available in req.user from the auth middleware
+  const user = await User.findById(req.user.id);
+
+  if (!user) {
+    return next(new AppError('User not found', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    data: user
+  });
+});
+
+/**
+ * @desc    Update user profile details
+ * @route   PUT /api/v1/profile
+ * @access  Private
+ */
+const updateProfile = asyncHandler(async (req, res, next) => {
+  // Fields to update
+  const fieldsToUpdate = {
+    name: req.body.name,
+    email: req.body.email,
+    phoneNumber: req.body.phoneNumber,
+    address: {
+      street: req.body.street,
+      city: req.body.city,
+      state: req.body.state,
+      zipcode: req.body.zipcode,
+      country: req.body.country
+    },
+    preferences: req.body.preferences // User preferences like notification settings, etc.
+  };
+
+  // Remove undefined fields (fields that weren't sent)
+  Object.keys(fieldsToUpdate).forEach(key => {
+    if (fieldsToUpdate[key] === undefined) {
+      delete fieldsToUpdate[key];
     }
+  });
+
+  // Special handling for nested address object
+  if (fieldsToUpdate.address) {
+    Object.keys(fieldsToUpdate.address).forEach(key => {
+      if (fieldsToUpdate.address[key] === undefined) {
+        delete fieldsToUpdate.address[key];
+      }
+    });
+    
+    // If address is empty after removing undefined fields, delete it
+    if (Object.keys(fieldsToUpdate.address).length === 0) {
+      delete fieldsToUpdate.address;
+    }
+  }
+
+  // Check if email is being changed and if it's already in use
+  if (fieldsToUpdate.email && fieldsToUpdate.email !== req.user.email) {
+    const emailExists = await User.findOne({ email: fieldsToUpdate.email });
+    if (emailExists) {
+      return next(new AppError('Email is already in use', 400));
+    }
+  }
+
+  // Find and update user
+  const user = await User.findByIdAndUpdate(
+    req.user.id, 
+    fieldsToUpdate, 
+    { 
+      new: true,       // Return the updated object
+      runValidators: true  // Run model validators
+    }
+  );
+
+  res.status(200).json({
+    success: true,
+    data: user,
+    message: 'Profile updated successfully'
+  });
+});
+
+/**
+ * @desc    Update user password
+ * @route   PUT /api/v1/profile/password
+ * @access  Private
+ */
+const updatePassword = asyncHandler(async (req, res, next) => {
+  const { currentPassword, newPassword, newPasswordConfirm } = req.body;
+
+  // Check if all required fields are provided
+  if (!currentPassword || !newPassword || !newPasswordConfirm) {
+    return next(new AppError('Please provide all password fields', 400));
+  }
+
+  // Check if new passwords match
+  if (newPassword !== newPasswordConfirm) {
+    return next(new AppError('New passwords do not match', 400));
+  }
+
+  // Get user with password field
+  const user = await User.findById(req.user.id).select('+password');
+
+  // Check if current password is correct
+  if (!(await user.matchPassword(currentPassword))) {
+    return next(new AppError('Current password is incorrect', 401));
+  }
+
+  // Update password
+  user.password = newPassword;
+  await user.save(); // Use save() to trigger password hashing middleware
+
+  // Send token response (re-authentication)
+  sendTokenResponse(user, 200, res);
+});
+
+/**
+ * @desc    Upload profile photo
+ * @route   PUT /api/v1/profile/photo
+ * @access  Private
+ */
+const uploadProfilePhoto = asyncHandler(async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError('Please upload a file', 400));
+  }
+
+  // Get current user
+  const user = await User.findById(req.user.id);
+
+  // Delete old avatar from cloudinary if exists
+  if (user.avatar && user.avatar.public_id) {
+    await removeFromCloudinary(user.avatar.public_id);
+  }
+
+  // Upload to cloudinary
+  const result = await uploadToCloudinary(req.file.path, 'avatars');
+
+  // Update user with new avatar
+  const updatedUser = await User.findByIdAndUpdate(
+    req.user.id,
+    {
+      avatar: {
+        public_id: result.public_id,
+        url: result.secure_url
+      }
+    },
+    { new: true }
+  );
+
+  res.status(200).json({
+    success: true,
+    data: updatedUser,
+    message: 'Profile photo updated successfully'
+  });
+});
+
+/**
+ * @desc    Delete profile photo
+ * @route   DELETE /api/v1/profile/photo
+ * @access  Private
+ */
+const deleteProfilePhoto = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+
+  // Check if user has an avatar
+  if (!user.avatar || !user.avatar.public_id) {
+    return next(new AppError('No profile photo to delete', 400));
+  }
+
+  // Delete from cloudinary
+  await removeFromCloudinary(user.avatar.public_id);
+
+  // Remove avatar from user
+  const updatedUser = await User.findByIdAndUpdate(
+    req.user.id,
+    { $unset: { avatar: 1 } },
+    { new: true }
+  );
+
+  res.status(200).json({
+    success: true,
+    data: updatedUser,
+    message: 'Profile photo removed successfully'
+  });
+});
+
+/**
+ * @desc    Delete user account
+ * @route   DELETE /api/v1/profile
+ * @access  Private
+ */
+const deleteAccount = asyncHandler(async (req, res, next) => {
+  // Get user to check password
+  const user = await User.findById(req.user.id).select('+password');
   
-    res.status(200).json({
+  // Verify password for security
+  if (!(await user.matchPassword(req.body.password))) {
+    return next(new AppError('Password is incorrect', 401));
+  }
+
+  // Delete the user account
+  await User.findByIdAndDelete(req.user.id);
+
+  // Clear cookies
+  res.cookie('token', 'none', {
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: true
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {},
+    message: 'Account deleted successfully'
+  });
+});
+
+// Helper function for sending token response
+const sendTokenResponse = (user, statusCode, res) => {
+  // Generate token
+  const token = user.getSignedJwtToken();
+
+  // Cookie options
+  const cookieOptions = {
+    expires: new Date(
+      Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
+    ),
+    httpOnly: true
+  };
+
+  // Set secure flag in production
+  if (process.env.NODE_ENV === 'production') {
+    cookieOptions.secure = true;
+  }
+
+  // Remove password from response
+  user.password = undefined;
+
+  res
+    .status(statusCode)
+    .cookie('token', token, cookieOptions)
+    .json({
       success: true,
+      token,
       data: user
     });
-  });
-  
-  /**
-   * @desc    Update user profile
-   * @route   PUT /api/v1/users/profile
-   * @access  Private
-   */
-  exports.updateProfile = asyncHandler(async (req, res, next) => {
-    // Fields allowed to be updated
-    const allowedFields = {
-      name: req.body.name,
-      email: req.body.email,
-      phoneNumber: req.body.phoneNumber,
-      address: req.body.address,
-      preferences: req.body.preferences
-    };
-  
-    // Filter out undefined fields
-    const updateData = Object.entries(allowedFields)
-      .reduce((acc, [key, value]) => {
-        if (value !== undefined) {
-          acc[key] = value;
-        }
-        return acc;
-      }, {});
-  
-    // If email is being updated, check if it's already in use
-    if (updateData.email) {
-      const existingUser = await User.findOne({ 
-        email: updateData.email,
-        _id: { $ne: req.user.id }
-      });
-  
-      if (existingUser) {
-        return next(new AppError('Email already in use by another account', 400));
-      }
-    }
-  
-    // Update the user
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id,
-      updateData,
-      {
-        new: true,
-        runValidators: true
-      }
-    );
-  
-    if (!updatedUser) {
-      return next(new AppError('User not found', 404));
-    }
-  
-    res.status(200).json({
-      success: true,
-      data: updatedUser
-    });
-  });
-  
-  /**
-   * @desc    Upload profile picture
-   * @route   PUT /api/v1/users/profile/picture
-   * @access  Private
-   */
-  exports.updateProfilePicture = asyncHandler(async (req, res, next) => {
-    if (!req.file) {
-      return next(new AppError('Please upload a file', 400));
-    }
-  
-    const user = await User.findById(req.user.id);
-  
-    if (!user) {
-      return next(new AppError('User not found', 404));
-    }
-  
-    // If user already has a profile picture, delete the old one
-    if (user.profilePicture && user.profilePicture.key) {
-      await deleteFromS3(user.profilePicture.key);
-    }
-  
-    // Upload new file to S3
-    const result = await uploadToS3(req.file, 'profile-pictures');
-  
-    // Update user profile with new image details
-    user.profilePicture = {
-      url: result.Location,
-      key: result.Key
-    };
-  
-    await user.save();
-  
-    res.status(200).json({
-      success: true,
-      data: {
-        profilePicture: user.profilePicture
-      }
-    });
-  });
-  
-  /**
-   * @desc    Change user password
-   * @route   PUT /api/v1/users/profile/password
-   * @access  Private
-   */
-  exports.changePassword = asyncHandler(async (req, res, next) => {
-    const { currentPassword, newPassword, confirmPassword } = req.body;
-  
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      return next(new AppError('Please provide all password fields', 400));
-    }
-  
-    // Check if new passwords match
-    if (newPassword !== confirmPassword) {
-      return next(new AppError('New passwords do not match', 400));
-    }
-  
-    // Get user with password field
-    const user = await User.findById(req.user.id).select('+password');
-  
-    if (!user) {
-      return next(new AppError('User not found', 404));
-    }
-  
-    // Check if current password is correct
-    const isMatch = await user.matchPassword(currentPassword);
-    if (!isMatch) {
-      return next(new AppError('Current password is incorrect', 401));
-    }
-  
-    // Update password
-    user.password = newPassword;
-    await user.save();
-  
-    // Send token response (re-authenticate user)
-    const token = user.getSignedJwtToken();
-  
-    res.status(200).json({
-      success: true,
-      message: 'Password updated successfully',
-      token
-    });
-  });
-  
-  /**
-   * @desc    Delete user profile
-   * @route   DELETE /api/v1/users/profile
-   * @access  Private
-   */
-  exports.deleteProfile = asyncHandler(async (req, res, next) => {
-    const user = await User.findById(req.user.id);
-  
-    if (!user) {
-      return next(new AppError('User not found', 404));
-    }
-  
-    // Delete profile picture from S3 if it exists
-    if (user.profilePicture && user.profilePicture.key) {
-      await deleteFromS3(user.profilePicture.key);
-    }
-  
-    // Additional cleanup might be needed (delete related data, etc.)
-    // You might want to archive user data instead of completely deleting it
-  
-    await User.findByIdAndDelete(req.user.id);
-  
-    res.status(200).json({
-      success: true,
-      message: 'User account successfully deleted'
-    });
-  });
-  
+};
 
 
 export { registerUser, loginUser };
