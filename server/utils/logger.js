@@ -1,8 +1,13 @@
-// config/logger.js
-const winston = require('winston');
-require('winston-mongodb');
-const fs = require('fs');
-const path = require('path');
+import winston from 'winston';
+import 'winston-mongodb';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Required for __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Create logs directory if it doesn't exist
 const logDir = path.join(process.cwd(), 'logs');
@@ -10,26 +15,15 @@ if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir);
 }
 
-/**
- * Custom format for development console output
- * - Includes timestamp, log level, message, metadata
- * - Color coded by log level
- * - Properly formats objects and errors
- */
 const developmentFormat = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.colorize(),
   winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-    // Format the message
     let logMessage = `${timestamp} ${level}: ${message}`;
-    
-    // Add stack trace if it exists
     if (stack) {
       logMessage += `\n${stack}`;
     }
-    
-    // Add metadata if it exists and isn't empty
     const metaData = Object.keys(meta).filter(key => key !== 'timestamp' && key !== 'level');
     if (metaData.length > 0) {
       const metaString = JSON.stringify(
@@ -41,33 +35,19 @@ const developmentFormat = winston.format.combine(
       );
       logMessage += `\nMetadata: ${metaString}`;
     }
-    
     return logMessage;
   })
 );
 
-/**
- * Production format
- * - JSON format for better parsing
- * - Includes all necessary metadata
- * - Structured for log analysis tools
- */
 const productionFormat = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.timestamp(),
   winston.format.json()
 );
 
-/**
- * Request formatter - used for HTTP request logging
- * Creates a standardized format for HTTP requests
- */
 const requestFormat = winston.format((info) => {
   if (info.isHttpRequest) {
-    // Standardize request logging
     const { req, res, responseTime, ...rest } = info;
-    
-    // Extract only needed request/response data
     return {
       ...rest,
       request: {
@@ -75,10 +55,9 @@ const requestFormat = winston.format((info) => {
         url: req.originalUrl || req.url,
         params: req.params,
         query: req.query,
-        // Only include body in development to avoid logging sensitive data in production
         body: process.env.NODE_ENV === 'development' ? req.body : undefined,
-        headers: process.env.NODE_ENV === 'development' ? 
-          req.headers : 
+        headers: process.env.NODE_ENV === 'development' ?
+          req.headers :
           {
             'user-agent': req.headers['user-agent'],
             'content-type': req.headers['content-type'],
@@ -95,16 +74,15 @@ const requestFormat = winston.format((info) => {
   return info;
 });
 
-// Define log levels with custom levels for application events
 const logLevels = {
   levels: {
-    error: 0,    // Errors and exceptions
-    warn: 1,     // Warnings that don't stop execution
-    info: 2,     // Important business events
-    http: 3,     // HTTP requests
-    debug: 4,    // Debugging information
-    trace: 5,    // Detailed tracing for development
-    db: 6        // Database operations
+    error: 0,
+    warn: 1,
+    info: 2,
+    http: 3,
+    debug: 4,
+    trace: 5,
+    db: 6
   },
   colors: {
     error: 'red',
@@ -117,17 +95,13 @@ const logLevels = {
   }
 };
 
-// Add colors
 winston.addColors(logLevels.colors);
 
-// Set default log level based on environment
 const defaultLogLevel = process.env.LOG_LEVEL || 
   (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
 
-// Create transports based on environment
 const transports = [];
 
-// Console transport - different format for development vs production
 transports.push(
   new winston.transports.Console({
     level: process.env.NODE_ENV === 'production' ? 'info' : 'trace',
@@ -140,26 +114,24 @@ transports.push(
   })
 );
 
-// File transports - used in all environments
 transports.push(
   new winston.transports.File({ 
     filename: path.join(logDir, 'error.log'), 
     level: 'error',
     format: productionFormat,
-    maxsize: 5242880, // 5MB
+    maxsize: 5242880,
     maxFiles: 5,
     tailable: true
   }),
   new winston.transports.File({ 
     filename: path.join(logDir, 'combined.log'),
     format: productionFormat,
-    maxsize: 5242880, // 5MB
+    maxsize: 5242880,
     maxFiles: 5,
     tailable: true
   })
 );
 
-// HTTP requests log - separate file
 transports.push(
   new winston.transports.File({
     filename: path.join(logDir, 'requests.log'),
@@ -168,25 +140,23 @@ transports.push(
       requestFormat(),
       productionFormat
     ),
-    maxsize: 5242880, // 5MB
+    maxsize: 5242880,
     maxFiles: 5
   })
 );
 
-// For development, add a debug log
 if (process.env.NODE_ENV !== 'production') {
   transports.push(
     new winston.transports.File({
       filename: path.join(logDir, 'debug.log'),
       level: 'debug',
       format: productionFormat,
-      maxsize: 5242880, // 5MB
+      maxsize: 5242880,
       maxFiles: 2
     })
   );
 }
 
-// MongoDB transport for production only
 if (process.env.NODE_ENV === 'production' && process.env.MONGO_URI) {
   try {
     transports.push(
@@ -198,14 +168,14 @@ if (process.env.NODE_ENV === 'production' && process.env.MONGO_URI) {
           autoReconnect: true
         },
         collection: 'logs',
-        level: 'error', // Only store errors in MongoDB
+        level: 'error',
         format: winston.format.combine(
           winston.format.timestamp(),
           winston.format.json()
         ),
         metaKey: 'meta',
         handleExceptions: true,
-        cappedSize: 10000000 // 10MB size limit
+        cappedSize: 10000000
       })
     );
   } catch (error) {
@@ -213,16 +183,14 @@ if (process.env.NODE_ENV === 'production' && process.env.MONGO_URI) {
   }
 }
 
-// Create the logger
 const logger = winston.createLogger({
   levels: logLevels.levels,
   level: defaultLogLevel,
   defaultMeta: { service: 'restaurant-api' },
   transports,
-  exitOnError: false // Don't exit on handled exceptions
+  exitOnError: false
 });
 
-// Handle uncaught exceptions
 winston.exceptions.handle(
   new winston.transports.Console({ 
     format: developmentFormat
@@ -233,7 +201,6 @@ winston.exceptions.handle(
   })
 );
 
-// Expose special function for HTTP request logging
 logger.logHttpRequest = (req, res, responseTime) => {
   logger.http('HTTP Request', { 
     isHttpRequest: true, 
@@ -243,7 +210,6 @@ logger.logHttpRequest = (req, res, responseTime) => {
   });
 };
 
-// DB operation logging
 logger.logDbOperation = (operation, collection, query, duration) => {
   logger.db('Database operation', {
     operation,
@@ -255,7 +221,6 @@ logger.logDbOperation = (operation, collection, query, duration) => {
   });
 };
 
-// Performance monitoring
 logger.logPerformance = (label, durationMs, metadata = {}) => {
   const logLevel = durationMs > 1000 ? 'warn' : 'debug';
   logger[logLevel](`Performance: ${label}`, {
@@ -265,7 +230,6 @@ logger.logPerformance = (label, durationMs, metadata = {}) => {
   });
 };
 
-// Business events logging
 logger.logBusinessEvent = (event, data) => {
   logger.info(`Business Event: ${event}`, {
     businessEvent: event,
@@ -273,7 +237,6 @@ logger.logBusinessEvent = (event, data) => {
   });
 };
 
-// Security events logging
 logger.logSecurityEvent = (event, data, level = 'warn') => {
   logger[level](`Security Event: ${event}`, {
     securityEvent: event,
@@ -281,7 +244,6 @@ logger.logSecurityEvent = (event, data, level = 'warn') => {
   });
 };
 
-// Add a simple way to measure execution time
 logger.measureExecutionTime = (fn, label) => {
   return async (...args) => {
     const start = process.hrtime();
@@ -295,4 +257,4 @@ logger.measureExecutionTime = (fn, label) => {
   };
 };
 
-module.exports = logger;
+export default logger;

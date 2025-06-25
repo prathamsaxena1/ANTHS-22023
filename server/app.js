@@ -1,29 +1,31 @@
-// app.js
-const express = require('express');
-const dotenv = require('dotenv');
-const cookieParser = require('cookie-parser');
-const errorHandler = require('./middleware/error');
+import cors from "cors";
+import express from "express";
+import userRoutes from "./routes/userRoutes.js";
+import logger from "./utils/logger.js";
 
-// Load environment variables
-dotenv.config({ path: './config/config.env' });
-
-// Route files
-const auth = require('./routes/authRoutes');
-const profile = require('./routes/profileRoutes');
-
+// Initialize the Express app
 const app = express();
 
-// Body parser
+// Use CORS middleware
+app.use(cors());
+
+// Use user routes
+app.use("/api/v1/user", userRoutes);
+
+// Use JSON middleware for parsing application/json
 app.use(express.json());
+logger.info("User routes Connected")
 
-// Cookie parser
-app.use(cookieParser());
+// Use URL-encoded middleware for parsing application/x-www-form-urlencoded
+app.use(express.urlencoded({ extended: true }));
 
-// Mount routers
-app.use('/api/auth', auth);
-app.use('/api/profile', profile);
+// Error Handling Middleware (Optional)
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(err.statusCode || 500).json({
+        message: err.message || 'Internal Server Error'
+    });
+});
 
-// Error handler middleware
-app.use(errorHandler);
-
-module.exports = app;
+// Export the app
+export default app;
