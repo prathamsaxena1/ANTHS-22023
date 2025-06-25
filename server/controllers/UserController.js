@@ -66,19 +66,4 @@ const loginUser = asyncHandler(async (req, res) => {
 });
 
 
-const getCurrentUser = asyncHandler(async (req, res) => {
-    if (!req.user) throw new ApiError(401, "User not authenticated");
-    res.status(200).json({ user: req.user });
-});
-
-const logoutUser = asyncHandler(async (req, res) => {
-    res.clearCookie("accessToken", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'Lax'
-    });
-    res.status(200).json({ message: "Logged out successfully" });
-});
-
-
-export { registerUser, loginUser, getCurrentUser,logoutUser };
+export { registerUser, loginUser };
